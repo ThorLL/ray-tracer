@@ -1,0 +1,119 @@
+[
+  {
+    "name": "Wood",
+    "albedo": [0.3, 0.125, 0.075],
+    "emissionColor": [0.0, 0.0, 0.0],
+    "emissionStrength": 0.0,
+    "roughness": 0.25,
+    "metallic": 0.1,
+    "ior": 0.0
+  },
+  {
+    "name": "Steel",
+    "albedo": [0.75, 0.75, 0.75],
+    "emissionColor": [0.0, 0.0, 0.0],
+    "emissionStrength": 0.0,
+    "roughness": 0.3,
+    "metallic": 1.0,
+    "ior": 0.0
+  },
+  {
+    "name": "Copper",
+    "albedo": [0.7, 0.4, 0.2],
+    "emissionColor": [0.0, 0.0, 0.0],
+    "emissionStrength": 0.0,
+    "roughness": 0.1,
+    "metallic": 0.8,
+    "ior": 0.0
+  },
+  {
+    "name": "Paint",
+    "albedo": [0.99, 0.99, 0.99],
+    "emissionColor": [0.0, 0.0, 0.0],
+    "emissionStrength": 0.0,
+    "roughness": 0.5,
+    "metallic": 0.0,
+    "ior": 0.0
+  },
+  {
+    "name": "Glass",
+    "albedo": [0.7, 0.7, 0.7],
+    "emissionColor": [0.0, 0.0, 0.0],
+    "emissionStrength": 0.0,
+    "roughness": 0.01,
+    "metallic": 0.0,
+    "ior": 1.5
+  },
+  {
+    "name": "Water",
+    "albedo": [0.86, 0.92, 0.95],
+    "emissionColor": [0.0, 0.0, 0.0],
+    "emissionStrength": 0.0,
+    "roughness": 0.0,
+    "metallic": 0.0,
+    "ior": 25.0
+  },
+  {
+    "name": "Ceramic",
+    "albedo": [0.7, 0.6, 0.67],
+    "emissionColor": [0.0, 0.0, 0.0],
+    "emissionStrength": 0.0,
+    "roughness": 0.2,
+    "metallic": 0.0,
+    "ior": 0.0
+  },
+  {
+    "name": "Mirror",
+    "albedo": [1.0, 1.0, 1.0],
+    "emissionColor": [0.0, 0.0, 0.0],
+    "emissionStrength": 0.0,
+    "roughness": 0.0,
+    "metallic": 1.0,
+    "ior": 0.0
+  },
+  {
+    "name": "Concrete",
+    "albedo": [0.3, 0.3, 0.3],
+    "emissionColor": [0.0, 0.0, 0.0],
+    "emissionStrength": 0.0,
+    "roughness": 0.7,
+    "metallic": 0.0,
+    "ior": 0.0
+  },
+  {
+    "name": "Glossy",
+    "albedo": [0.6, 0.4, 0.2],
+    "emissionColor": [0.0, 0.0, 0.0],
+    "emissionStrength": 0.0,
+    "roughness": 0.0,
+    "metallic": 0.4,
+    "ior": 0.0
+  },
+  {
+    "name": "Lamp",
+    "albedo": [0.0, 0.0, 0.0],
+    "emissionColor": [1.0, 1.0, 1.0],
+    "emissionStrength": 0.2,
+    "roughness": 0.0,
+    "metallic": 0.0,
+    "ior": 0.0
+  },
+  {
+    "name": "Sun",
+    "albedo": [0.0, 0.0, 0.0],
+    "emissionColor": [1.0, 1.0, 1.0],
+    "emissionStrength": 10.0,
+    "roughness": 0.0,
+    "metallic": 0.0,
+    "ior": 0.0
+  },
+  {
+    "name": "Grass",
+    "albedo": [0.0, 0.0, 0.0],
+    "emissionColor": [0.0, 1.0, 0.0],
+    "emissionStrength": 0.1,
+    "roughness": 0.0,
+    "metallic": 0.0,
+    "ior": 0.0
+  }
+]
