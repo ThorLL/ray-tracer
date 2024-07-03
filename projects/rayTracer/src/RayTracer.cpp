@@ -94,8 +94,8 @@ int screenHeight = 1080;
 float aspectRatio = static_cast<float>(screenWidth) / static_cast<float>(screenHeight);
 unsigned int frameCount = 0;
 
-int numberOfRays = 2;
-int numberOfbounches = 16;
+int numberOfRays = 1;
+int numberOfbounches = 8;
 
 // camera params
 bool cameraEnabled = false;
@@ -244,35 +244,6 @@ void Update(const float deltaTime) {
 
 		frameCount = 0;
 	}
-	std::vector _spheres(spheres);
-	for (auto sphere: _spheres) sphere.Transform(camera.viewMatrix);
-
-	glBindBuffer(GL_SHADER_STORAGE_BUFFER, sphereBuffer);
-	glBufferData(GL_SHADER_STORAGE_BUFFER, _spheres.size() * sizeof(Sphere), _spheres.data(), GL_STATIC_READ);
-	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, sphereBuffer);
-	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
-
-	std::vector<TriangleData> _triangles;
-	for (auto triangle: triangles) _triangles.push_back(triangle.Transform(camera.viewMatrix).GetData());
-
-	glBindBuffer(GL_SHADER_STORAGE_BUFFER, TrianglesBuffer);
-	glBufferData(GL_SHADER_STORAGE_BUFFER, _triangles.size() * sizeof(TriangleData), _triangles.data(), GL_STATIC_READ);
-	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, TrianglesBuffer);
-	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
-
-	glBindBuffer(GL_SHADER_STORAGE_BUFFER, MeshBuffer);
-	glBufferData(GL_SHADER_STORAGE_BUFFER, meshes.size() * sizeof(Mesh), meshes.data(), GL_STATIC_READ);
-	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, MeshBuffer);
-	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
-
-	std::vector<MaterialData> _materials;
-	for (auto material: materials) _materials.push_back(material.GetData());
-
-	glBindBuffer(GL_SHADER_STORAGE_BUFFER, MaterialBuffer);
-	glBufferData(GL_SHADER_STORAGE_BUFFER, _materials.size() * sizeof(MaterialData), _materials.data(), GL_STATIC_READ);
-
-	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, MaterialBuffer);
-	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 }
 
 void initialise() {
@@ -280,10 +251,11 @@ void initialise() {
 	glfwInit();
 	// Create window
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 	glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
-	window = glfwCreateWindow(1920, 1080, "Ray Tracer", nullptr, nullptr);
+	glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
+	window = glfwCreateWindow(screenWidth, screenHeight, "Ray Tracer", nullptr, nullptr);
 	if (!window) {
 		std::cout << "Failed to create GLFW window" << std::endl;
 		glfwTerminate();
@@ -307,7 +279,6 @@ void initialise() {
 	glGenBuffers(1, &MaterialBuffer);
 
 	glBindBuffer(GL_ARRAY_BUFFER, VertexBufferObject);
-	glBindVertexArray(VertexArrayObject);
 
 	const std::vector<glm::vec3> fullscreenVertices {
 					{-1.0f, -1.0f, 0.0f},
@@ -316,7 +287,7 @@ void initialise() {
 	};
 
 	glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec3) * fullscreenVertices.size(), fullscreenVertices.data(), GL_STATIC_DRAW);
-
+	glBindVertexArray(VertexArrayObject);
 	constexpr GLuint location = 0;
 	glVertexAttribPointer(location, 3, GL_FLOAT, GL_FALSE, 0, nullptr);
 	glEnableVertexAttribArray(location);
@@ -345,21 +316,20 @@ void loadResources() {
 	LoadMaterials("resources/materials/materials.json");
 
 	// Creater shader
-	shaderProgram = glCreateProgram();
-	const GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
-	GLuint fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-
+	GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
 	LoadShader(vertexShader,{
 		"resources/shaders/version430.glsl",
 		"resources/shaders/renderer/fullscreen.vert"
 	});
 
+	GLuint fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
 	LoadShader(fragmentShader, {
 		"resources/shaders/version430.glsl",
 		"resources/shaders/random.glsl",
 		"resources/shaders/raytracing.frag"
 	});
 
+	shaderProgram = glCreateProgram();
 	glAttachShader(shaderProgram, vertexShader);
 	glAttachShader(shaderProgram, fragmentShader);
 	glLinkProgram(shaderProgram);
@@ -375,7 +345,6 @@ void loadResources() {
 
 	// Init Framebuffer
 	glGenTextures(1, &screenTexture);
-	glGenFramebuffers(1, &screenFramebuffer);
 	glBindTexture(GL_TEXTURE_2D, screenTexture);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, screenWidth, screenHeight, 0, GL_RGBA, GL_FLOAT, std::span<float>().data());
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -383,6 +352,7 @@ void loadResources() {
 	glBindTexture(GL_TEXTURE_2D, 0);
 
 	// Scene framebuffer
+	glGenFramebuffers(1, &screenFramebuffer);
 	glBindFramebuffer(GL_FRAMEBUFFER, screenFramebuffer);
 	glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, screenTexture, 0);
 	constexpr GLenum attachments[] = { GL_COLOR_ATTACHMENT0 };
@@ -390,15 +360,14 @@ void loadResources() {
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 	// Create copy shader
-	copyShaderProgram = glCreateProgram();
 	fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-
 	LoadShader(fragmentShader, {
 		"resources/shaders/version430.glsl",
 		"resources/shaders/renderer/copy.frag"
 	});
 
 	// reusing vertex shader
+	copyShaderProgram = glCreateProgram();
 	glAttachShader(copyShaderProgram, vertexShader);
 	glAttachShader(copyShaderProgram, fragmentShader);
 	glLinkProgram(copyShaderProgram);
@@ -417,6 +386,11 @@ void loadResources() {
 			meshNames.emplace_back(name);
 			meshes.push_back(mesh);
 		}
+	}
+
+	std::vector idxs{9, 9, 6, 8, 6, 2, 8, 8, 3, 7, 0, 1, 3, 10, 0, 6, 3, 11, 12,11,11, 3};
+	for (int i = 0; i < idxs.size(); ++i) {
+		meshes[i].materialIndex = idxs[i];
 	}
 }
 
@@ -459,7 +433,7 @@ void RenderGUI() {
 	ImGui::Begin("Meshes");
 	for (int i = 0; i < meshes.size(); i++) {
 		if(ImGui::TreeNodeEx(meshNames[i].c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
-			changed |= ImGui::Checkbox("Hide", &meshes[i].hide);
+			changed |= ImGui::Checkbox("Hide", &meshes[i].visible);
 			changed |= ImGui::DragInt("Material index", &meshes[i].materialIndex, 1, 0, static_cast<int>(materials.size()) -1);
 			ImGui::TreePop();
 		}
@@ -512,7 +486,40 @@ int main() {
 		glUniformMatrix4fv(invProjMatrixLocation, 1, false, &inverse(camera.projMatrix)[0][0]);
 		glUniform1iv(raysLocation, 1, &numberOfRays);
 		glUniform1iv(bounchesLocation, 1, &numberOfbounches);
+		static bool once = true;
+		if (once) {
+			once = !once;
 
+			std::vector _spheres(spheres);
+			for (auto sphere: _spheres) sphere.Transform(camera.viewMatrix);
+
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, sphereBuffer);
+			glBufferData(GL_SHADER_STORAGE_BUFFER, _spheres.size() * sizeof(Sphere), _spheres.data(), GL_STATIC_READ);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, sphereBuffer);
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
+			std::vector<TriangleData> _triangles;
+			for (auto triangle: triangles) _triangles.push_back(triangle.Transform(camera.viewMatrix).GetData());
+
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, TrianglesBuffer);
+			glBufferData(GL_SHADER_STORAGE_BUFFER, _triangles.size() * sizeof(TriangleData), _triangles.data(), GL_STATIC_READ);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, TrianglesBuffer);
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, MeshBuffer);
+			glBufferData(GL_SHADER_STORAGE_BUFFER, meshes.size() * sizeof(Mesh), meshes.data(), GL_STATIC_READ);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, MeshBuffer);
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
+			std::vector<MaterialData> _materials;
+			for (auto material: materials) _materials.push_back(material.GetData());
+
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, MaterialBuffer);
+			glBufferData(GL_SHADER_STORAGE_BUFFER, _materials.size() * sizeof(MaterialData), _materials.data(), GL_STATIC_READ);
+
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, MaterialBuffer);
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+		}
 		// Set depth test
 		glDepthFunc(GL_LESS);
 		glDepthMask(GL_TRUE);

@@ -12,7 +12,7 @@
 
 struct Mesh {
 	int firstTriangleIndex, nTriangle, materialIndex;
-	bool hide;
+	bool visible;
 };
 
 static std::vector<std::pair<std::string, Mesh>> loadMesh(const char* filePath, std::vector<Triangle> *triangles) {
@@ -32,7 +32,7 @@ static std::vector<std::pair<std::string, Mesh>> loadMesh(const char* filePath, 
 		if (line.substr(0, 2) == "o ") {
 			objects.emplace_back(
 				line.substr(2, line.size()),
-				Mesh(static_cast<int>(triangles->size()), 0, 0, false)
+				Mesh(static_cast<int>(triangles->size()), 0, 10, true)
 			);
 		}
 		// Parse vertex data

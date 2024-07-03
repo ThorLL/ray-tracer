@@ -37,8 +37,8 @@ struct Triangle {
 	}
 	TriangleData GetData(){
 		return {
-				{posA, 0.0f},{posB, 0.0f},{posC, 0.0f},
-			{normalA, 0.0f},{normalB, 0.0f},{normalC, 0.0f},
+				{posA, 0.0f},{posB, 0.0f},{posC, 1.0f},
+			{normalA, 0.0f},{normalB, 0.0f},{normalC, 1.0f},
 			};
 	}
 };

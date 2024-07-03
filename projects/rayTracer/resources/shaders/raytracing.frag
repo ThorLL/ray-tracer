@@ -14,8 +14,8 @@ struct Ray
 
 struct Material
 {
-	vec3 albedo;
-	vec3 emissionColor;
+	vec3 albedo; float albedo_pad;
+	vec3 emissionColor;  float emissionColor_pad;
 	float strength;
 	float roughness;
 	float metallic;
@@ -53,7 +53,7 @@ struct MeshInfo
 	int firstTriangleIndex;
 	int nTriangle;
 	int materialIndex;
-	bool invisible;
+	bool visible;
 };
 
 // --- Uniforms ---
@@ -168,7 +168,7 @@ HitInfo CollisionDetection(Ray ray)
 	for (int meshIndex = 0; meshIndex < meshInfos.length(); meshIndex ++)
 	{
 		MeshInfo meshInfo = meshInfos[meshIndex];
-		if (meshInfo.invisible)
+		if (!meshInfo.visible)
 			continue;
 
 		for (uint i = 0u; i < meshInfo.nTriangle; i ++) {
@@ -220,7 +220,11 @@ vec3 CastRay(Ray ray)
 		bool isSpecularBounce = material.metallic > RandomValue();
 
 		// specular and diffusing directions
-		vec3 diffuseDir = normalize(normal + GetRandomDirection());
+		float phi = 6.28318530718f * RandomValue();
+		vec3 direction = GetImplicitNormal(vec2(cos(phi), sin(phi)) * RandomValue());
+		vec3 bitangent = normalize(cross(normal, normal.z > 0.5f ? vec3(0, 1, 0) : vec3(0, 0, 1)));
+		vec3 tangent = cross(normal, bitangent);
+		vec3 diffuseDir = direction.x * bitangent + direction.y * tangent + direction.z * normal;
 
 		// cast specular light
 		if (isSpecularBounce){
@@ -261,13 +265,12 @@ void main()
 
 	Ray ray;
 	vec3 totalIncomingLight = vec3(0);
-
+	float Focus = 100.0f;
 	for (int rayIndex = 0; rayIndex < NumRaysPerPixel; rayIndex++)
 	{
 		ray.ior = 1.0f;
 
 		// Calculate ray origin and direction
-		float Focus = 100.0f;
 		vec3 defocusJitter = GetRandomDirection() * (1 - 0.01f * Focus);
 		ray.origin = viewPos.xyz + vec3(1,0,0) * defocusJitter.x + vec3(0,1,0) * defocusJitter.y;
 		ray.direction = normalize(ray.origin);

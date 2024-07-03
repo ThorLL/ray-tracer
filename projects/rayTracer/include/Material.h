@@ -14,7 +14,7 @@ struct Material
 	MaterialData GetData(){
 		return {
 			{albedo, 0.0f},
-			{albedo, 0.0f},
+			{emissionColor, 0.0f},
 			strength,roughness, metallic, ior
 		};
 	}
