@@ -250,7 +250,6 @@ void Update(const float deltaTime) {
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, sphereBuffer);
 	glBufferData(GL_SHADER_STORAGE_BUFFER, _spheres.size() * sizeof(Sphere), _spheres.data(), GL_STATIC_READ);
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, sphereBuffer);
-
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
 	std::vector<TriangleData> _triangles;
@@ -263,7 +262,6 @@ void Update(const float deltaTime) {
 
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, MeshBuffer);
 	glBufferData(GL_SHADER_STORAGE_BUFFER, meshes.size() * sizeof(Mesh), meshes.data(), GL_STATIC_READ);
-
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, MeshBuffer);
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
