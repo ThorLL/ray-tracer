@@ -3,7 +3,6 @@
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
 #include <iostream>
-#include <numbers>
 #include <span>
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
@@ -12,81 +11,9 @@
 
 #include "../include/Mesh.h"
 #include "../include/json.hpp"
-#include "../include/Material.h"
+#include "../include/Camera.h"
+#include "../include/SSBO.h"
 
-struct MyTransform {
-	glm::vec3 translation{};
-	glm::vec3 rotation{};
-	glm::vec3 scale{};
-
-	// Cached matrix
-	mutable glm::mat4 matrix{};
-	mutable bool dirty{};
-
-	std::shared_ptr<MyTransform> parent;
-
-	glm::mat4 GetRotationMatrix() const {
-		auto matrix = glm::identity<glm::mat4>();
-		matrix = rotate(matrix, rotation.y, glm::vec3(0, 1, 0));
-		matrix = rotate(matrix, rotation.x, glm::vec3(1, 0, 0));
-		matrix = rotate(matrix, rotation.z, glm::vec3(0, 0, 1));
-		return matrix;
-	}
-};
-
-struct MyCamera {
-	MyCamera() : viewMatrix(1), projMatrix(1){}
-	MyCamera(const glm::mat4 &view, const glm::mat4 &proj) :
-		viewMatrix(view),
-		projMatrix(proj),
-		transform{
-			ExtractTranslation(),
-			ExtractRotation(),
-			ExtractScale(),
-			glm::mat4(1),
-			false
-		}
-	{}
-	glm::mat4 viewMatrix, projMatrix;
-	MyTransform transform;
-	[[nodiscard]] glm::vec3 ExtractTranslation() const
-	{
-		return transpose(viewMatrix) * -viewMatrix[3];
-	}
-
-	[[nodiscard]] glm::vec3 ExtractRotation() const
-	{
-		glm::vec3 rotation(0.0f);
-		if (const float f = viewMatrix[1][2]; std::abs(std::abs(f) - 1.0f) < 0.00001f)
-		{
-			rotation.x = -f * static_cast<float>(std::numbers::pi) * 0.5f;
-			rotation.y = std::atan2(-f * viewMatrix[0][1], -f * viewMatrix[0][0]);
-			rotation.z = 0.0f;
-		}
-		else
-		{
-			rotation.x = -std::asin(f);
-			const float cosX = std::cos(rotation.x);
-			rotation.y = std::atan2(viewMatrix[0][2] / cosX, viewMatrix[2][2] / cosX);
-			rotation.z = std::atan2(viewMatrix[1][0] / cosX, viewMatrix[1][1] / cosX);
-		}
-		return rotation;
-	}
-
-	[[nodiscard]] glm::vec3 ExtractScale() const
-	{
-		return {viewMatrix[0].length(), viewMatrix[1].length(), viewMatrix[2].length()};
-	}
-
-	void ExtractVectors(glm::vec3& right, glm::vec3& up, glm::vec3& forward) const
-	{
-		glm::mat3 transposed = transpose(viewMatrix);
-
-		right = transposed[0];
-		up = transposed[1];
-		forward = transposed[2];
-	}
-};
 
 // program info/pramas
 int screenWidth = 1920;
@@ -99,7 +26,7 @@ int numberOfbounches = 8;
 
 // camera params
 bool cameraEnabled = false;
-MyCamera camera;
+Camera camera;
 glm::vec2 lastMousePosition;
 
 // uniform locations
@@ -112,25 +39,32 @@ GLuint screenTexture;
 
 GLint screenTexturePtr;
 // scene data
-std::vector<Sphere> spheres{};
-std::vector<Triangle> triangles{};
-std::vector<Mesh> meshes{};
-std::vector<std::string> meshNames{};
-std::vector<Material> materials{};
-std::vector<std::string> materialNames{};
+std::vector<std::shared_ptr<Sphere>> spheres{};
+std::vector<std::shared_ptr<Triangle>> triangles{};
+std::vector<std::shared_ptr<Mesh>> meshes{};
+std::vector<std::shared_ptr<Material>> materials{};
 
 // Buffers
 GLuint VertexBufferObject;
 GLuint VertexArrayObject;
-GLuint sphereBuffer;
-GLuint TrianglesBuffer;
-GLuint MeshBuffer;
-GLuint MaterialBuffer;
 GLuint screenFramebuffer;
 // shader programs
 GLuint shaderProgram;
 GLuint copyShaderProgram;
 
+std::optional<SSBO> SphereSSBO;
+std::optional<SSBO> TriangleSSBO;
+std::optional<SSBO> MeshSSBO;
+std::optional<SSBO> MaterialSSBO;
+
+constexpr unsigned short SPHERES = 1;
+constexpr unsigned short TRIANGLES = 2;
+constexpr unsigned short MESHES = 4;
+constexpr unsigned short MATERIALS = 8;
+constexpr unsigned short SYSTEM = 16;
+constexpr unsigned short CAMERA = 32 + TRIANGLES + SPHERES;
+
+std::vector<unsigned short> ChangesBuffer{};
 
 GLFWwindow* window = nullptr;
 
@@ -165,28 +99,27 @@ void LoadShader(const GLuint shader, const std::vector<const char*> &paths)
 void LoadMaterials(const char* filePath) {
 	std::ifstream f(filePath);
 	nlohmann::json data = nlohmann::json::parse(f);
-
+	int idx = 0;
 	for (auto material : data)
 	{
-		materialNames.push_back(material["name"].get<std::string>());
-		materials.push_back(
+		materials.push_back(std::make_shared<Material>(Material{
 			{
-				{
-					material["albedo"][0].get<float>(),
-					material["albedo"][1].get<float>(),
-					material["albedo"][2].get<float>()
-				},
-				{
-					material["emissionColor"][0].get<float>(),
-					material["emissionColor"][1].get<float>(),
-					material["emissionColor"][2].get<float>()
-				},
-				material["emissionStrength"].get<float>(),
-				material["roughness"].get<float>(),
-				material["metallic"].get<float>(),
-				material["ior"].get<float>()
-			}
-		);
+				material["albedo"][0].get<float>(),
+				material["albedo"][1].get<float>(),
+				material["albedo"][2].get<float>()
+			},
+			{
+				material["emissionColor"][0].get<float>(),
+				material["emissionColor"][1].get<float>(),
+				material["emissionColor"][2].get<float>()
+			},
+			material["emissionStrength"].get<float>(),
+			material["roughness"].get<float>(),
+			material["metallic"].get<float>(),
+			material["ior"].get<float>(),
+			material["name"].get<std::string>(),
+			idx++
+		}));
 	}
 }
 
@@ -196,7 +129,7 @@ void Update(const float deltaTime) {
 	bool _enablePressed = glfwGetKey(window, GLFW_KEY_SPACE);
 	if (_enablePressed && !enablePressed) {
 		cameraEnabled = !cameraEnabled;
-		glfwSetInputMode(window, GLFW_CURSOR, cameraEnabled ? GLFW_CURSOR_NORMAL : GLFW_CURSOR_DISABLED);
+		glfwSetInputMode(window, GLFW_CURSOR, !cameraEnabled ? GLFW_CURSOR_NORMAL : GLFW_CURSOR_DISABLED);
 	}
 	enablePressed = _enablePressed;
 
@@ -241,8 +174,7 @@ void Update(const float deltaTime) {
 
 		const glm::mat4 matrix = transpose(camera.transform.GetRotationMatrix());
 		camera.viewMatrix = translate(matrix, -camera.transform.translation);
-
-		frameCount = 0;
+		ChangesBuffer.push_back(CAMERA);
 	}
 }
 
@@ -273,10 +205,10 @@ void initialise() {
 	// gen buffers
 	glGenBuffers(1, &VertexBufferObject);
 	glGenVertexArrays(1, &VertexArrayObject);
-	glGenBuffers(1, &sphereBuffer);
-	glGenBuffers(1, &TrianglesBuffer);
-	glGenBuffers(1, &MeshBuffer);
-	glGenBuffers(1, &MaterialBuffer);
+	SphereSSBO.emplace(1);
+	TriangleSSBO.emplace(2);
+	MeshSSBO.emplace(3);
+	MaterialSSBO.emplace(4);
 
 	glBindBuffer(GL_ARRAY_BUFFER, VertexBufferObject);
 
@@ -306,8 +238,8 @@ void initialise() {
 	ImGui_ImplOpenGL3_Init("#version 430 core");
 
 	// Init camera
-	camera = MyCamera{
-		lookAt(glm::vec3(0.0f, 2.75f, 5.0f),glm::vec3(0.0f,3.0f,1.0f),glm::vec3(0.0f, 1.0f, 0.0f)),
+	camera = Camera{
+		lookAt(glm::vec3(0.0f, 1.0f, 2.5f),glm::vec3(0.0f,0.75f,-1.0f),glm::vec3(0.0f, 1.0f, 0.0f)),
 		glm::perspective(1.5f, aspectRatio, 0.1f, 500.0f)
 	};
 }
@@ -379,19 +311,21 @@ void loadResources() {
 
 	// Load meshes
 	const char* meshPaths[] = {
-		"resources/models/WhiteRoom.obj"
+		"resources/models/CornellBox-Original.obj"
 	};
-	for (const auto path: meshPaths) {
-		for (auto &[name, mesh] : loadMesh(path, &triangles)) {
-			meshNames.emplace_back(name);
+	for (const auto path: meshPaths)
+		for (const auto& mesh : loadMesh(path, &triangles))
 			meshes.push_back(mesh);
-		}
-	}
+}
 
-	std::vector idxs{9, 9, 6, 8, 6, 2, 8, 8, 3, 7, 0, 1, 3, 10, 0, 6, 3, 11, 12,11,11, 3};
-	for (int i = 0; i < idxs.size(); ++i) {
-		meshes[i].materialIndex = idxs[i];
-	}
+bool MaterialDropDown(int &materialIndex) {
+	std::vector<const char*> materialNames;
+	for (const auto &material : materials)
+		materialNames.push_back(material->name.c_str());
+
+	if (ImGui::Combo("Material", &materialIndex, materialNames.data(), static_cast<int>(materialNames.size())))
+		return true;
+	return false;
 }
 
 void RenderGUI() {
@@ -400,51 +334,93 @@ void RenderGUI() {
 	ImGui_ImplGlfw_NewFrame();
 	ImGui::NewFrame();
 
-	bool changed = false;
+	bool systemhanges = false;
+	bool materialChanges = false;
+	bool sphereChanges = false;
+	bool meshChanges = false;
+
 	ImGui::Begin("Ray tracing");
-	changed |= ImGui::DragInt("Rays per Pixel", &numberOfRays, 1, 0);
-	changed |= ImGui::DragInt("Bounces", &numberOfbounches, 1, 0);
+	systemhanges |= ImGui::DragInt("Rays per Pixel", &numberOfRays, 1, 0);
+	systemhanges |= ImGui::DragInt("Bounces", &numberOfbounches, 1, 0);
 	ImGui::End();
 	ImGui::Begin("Materials");
-	for (int i = 0; i < materials.size(); i++) {
-		if(ImGui::TreeNodeEx((materialNames[i] + std::to_string(i)).c_str(), ImGuiTreeNodeFlags_OpenOnDoubleClick)) {
-			auto &[albedo, emissionColor, strength, roughness, metallic, ior] = materials[i];
-			changed |= ImGui::ColorEdit3("Color", &albedo[0]);
-			changed |= ImGui::ColorEdit3("Emission Color", &emissionColor[0]);
-			changed |= ImGui::DragFloat("Emission Strength", &strength, 0.05f, 0, 100);
-			changed |= ImGui::DragFloat("Roughness", &roughness, 0.05f, 0, 1);
-			changed |= ImGui::DragFloat("Metallic", &metallic, 0.05f, 0, 1);
-			changed |= ImGui::DragFloat("IOR", &ior, 0.05f, 0);
+	for (const auto &material : materials) {
+		if(ImGui::TreeNodeEx(material->name.c_str(), ImGuiTreeNodeFlags_OpenOnDoubleClick)) {
+			materialChanges |= ImGui::ColorEdit3("Color", &material->albedo[0]);
+			materialChanges |= ImGui::ColorEdit3("Emission Color", &material->emissionColor[0]);
+			materialChanges |= ImGui::DragFloat("Emission Strength", &material->strength, 0.05f, 0, 100);
+			materialChanges |= ImGui::DragFloat("Roughness", &material->roughness, 0.05f, 0, 1);
+			materialChanges |= ImGui::DragFloat("Metallic", &material->metallic, 0.05f, 0, 1);
+			materialChanges |= ImGui::DragFloat("IOR", &material->ior, 0.05f, 0);
 			ImGui::TreePop();
 		}
 	}
 	ImGui::End();
 	ImGui::Begin("Spheres");
-	for (int i = 0; i < spheres.size(); i++) {
-		if(ImGui::TreeNodeEx(("Sphere" + std::to_string(i+1)).c_str(), ImGuiTreeNodeFlags_DefaultOpen))
+	for (const auto &sphere : spheres) {
+		if(ImGui::TreeNodeEx("Sphere", ImGuiTreeNodeFlags_DefaultOpen))
 		{
-			changed |= ImGui::DragFloat3("Center", &spheres[i].center[0], .1f);
-			changed |= ImGui::DragFloat("Radius", &spheres[i].radius, .1f, 0);
-			changed |= ImGui::DragInt("Material index", &spheres[i].materialIndex,  1, 0, static_cast<int>(materials.size()) -1);
+			sphereChanges |= ImGui::DragFloat3("Center", &sphere->center[0], .1f);
+			sphereChanges |= ImGui::DragFloat("Radius", &sphere->radius, .1f, 0);
+			sphereChanges |= MaterialDropDown(sphere->materialIndex);
 			ImGui::TreePop();
 		}
 	}
 	ImGui::End();
 	ImGui::Begin("Meshes");
-	for (int i = 0; i < meshes.size(); i++) {
-		if(ImGui::TreeNodeEx(meshNames[i].c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
-			changed |= ImGui::Checkbox("Hide", &meshes[i].visible);
-			changed |= ImGui::DragInt("Material index", &meshes[i].materialIndex, 1, 0, static_cast<int>(materials.size()) -1);
+	for (const auto &mesh : meshes) {
+		if (ImGui::TreeNodeEx(mesh->name.c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
+			meshChanges |= ImGui::Checkbox("Hide", &mesh->visible);
+			meshChanges |= MaterialDropDown(mesh->materialIndex);
 			ImGui::TreePop();
 		}
 	}
 	ImGui::End();
 
-	if (changed)
-		frameCount = 0;
+	if (systemhanges) ChangesBuffer.push_back(SYSTEM);
+	if (materialChanges) ChangesBuffer.push_back(MATERIALS);
+	if (sphereChanges) ChangesBuffer.push_back(SPHERES);
+	if (meshChanges) ChangesBuffer.push_back(MESHES);
 
 	ImGui::Render();
 	ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+}
+
+void HandleChanges() {
+	if(ChangesBuffer.empty()) return;
+	const unsigned short change = std::accumulate(std::begin(ChangesBuffer), std::end(ChangesBuffer), 0);
+
+	if (change & SPHERES) {
+		std::vector<std::shared_ptr<ShaderStruct>> _spheres;
+		for (const auto &sphere: spheres)
+			_spheres.push_back(std::make_shared<Sphere>(sphere->Transform(camera.viewMatrix)));
+		SphereSSBO->BufferData(_spheres);
+	}
+	if (change & TRIANGLES) {
+		std::vector<std::shared_ptr<ShaderStruct>> _triangles;
+		for (const auto &triangle: triangles)
+			_triangles.push_back(std::make_shared<Triangle>(triangle->Transform(camera.viewMatrix)));
+		TriangleSSBO->BufferData(_triangles);
+	}
+	if (change & MESHES) {
+		std::vector<std::shared_ptr<ShaderStruct>> _meshes;
+		for (const auto &mesh: meshes)_meshes.push_back(mesh);
+		MeshSSBO->BufferData(_meshes);
+	}
+	if (change & MATERIALS) {
+		std::vector<std::shared_ptr<ShaderStruct>> _materials;
+		for (const auto &material: materials)_materials.push_back(material);
+		MaterialSSBO->BufferData(_materials);
+	}
+	if (change & SYSTEM) {
+		glUniform1iv(raysLocation, 1, &numberOfRays);
+		glUniform1iv(bounchesLocation, 1, &numberOfbounches);
+	}
+	if (change & CAMERA) {
+		glUniformMatrix4fv(invProjMatrixLocation, 1, false, &inverse(camera.projMatrix)[0][0]);
+	}
+	ChangesBuffer.clear();
+	frameCount = 0;
 }
 
 int main() {
@@ -453,6 +429,10 @@ int main() {
 	// Start Program
 	const auto startTime = std::chrono::steady_clock::now();
 	float currentTime = 0;
+
+	// max unsigned short == update all values
+	ChangesBuffer.push_back(std::numeric_limits<unsigned short>::max());
+
 	// Main loop
 	while (window != nullptr && !glfwWindowShouldClose(window))
 	{
@@ -482,44 +462,10 @@ int main() {
 		glBindFramebuffer(GL_FRAMEBUFFER, screenFramebuffer);
 		glUseProgram(shaderProgram);
 
+		HandleChanges();
+
 		glUniform1uiv(frameCountLocation, 1, &++frameCount);
-		glUniformMatrix4fv(invProjMatrixLocation, 1, false, &inverse(camera.projMatrix)[0][0]);
-		glUniform1iv(raysLocation, 1, &numberOfRays);
-		glUniform1iv(bounchesLocation, 1, &numberOfbounches);
-		static bool once = true;
-		if (once) {
-			once = !once;
 
-			std::vector _spheres(spheres);
-			for (auto sphere: _spheres) sphere.Transform(camera.viewMatrix);
-
-			glBindBuffer(GL_SHADER_STORAGE_BUFFER, sphereBuffer);
-			glBufferData(GL_SHADER_STORAGE_BUFFER, _spheres.size() * sizeof(Sphere), _spheres.data(), GL_STATIC_READ);
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, sphereBuffer);
-			glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
-
-			std::vector<TriangleData> _triangles;
-			for (auto triangle: triangles) _triangles.push_back(triangle.Transform(camera.viewMatrix).GetData());
-
-			glBindBuffer(GL_SHADER_STORAGE_BUFFER, TrianglesBuffer);
-			glBufferData(GL_SHADER_STORAGE_BUFFER, _triangles.size() * sizeof(TriangleData), _triangles.data(), GL_STATIC_READ);
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, TrianglesBuffer);
-			glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
-
-			glBindBuffer(GL_SHADER_STORAGE_BUFFER, MeshBuffer);
-			glBufferData(GL_SHADER_STORAGE_BUFFER, meshes.size() * sizeof(Mesh), meshes.data(), GL_STATIC_READ);
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, MeshBuffer);
-			glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
-
-			std::vector<MaterialData> _materials;
-			for (auto material: materials) _materials.push_back(material.GetData());
-
-			glBindBuffer(GL_SHADER_STORAGE_BUFFER, MaterialBuffer);
-			glBufferData(GL_SHADER_STORAGE_BUFFER, _materials.size() * sizeof(MaterialData), _materials.data(), GL_STATIC_READ);
-
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, MaterialBuffer);
-			glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
-		}
 		// Set depth test
 		glDepthFunc(GL_LESS);
 		glDepthMask(GL_TRUE);

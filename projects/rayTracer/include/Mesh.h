@@ -1,5 +1,4 @@
 #pragma once
-
 #include <cassert>
 #include <vector>
 #include <fstream>
@@ -7,15 +6,23 @@
 #include <string>
 #include <glm/vec3.hpp>
 
-#include "Primitives.h"
+#include "ShaderStruct.h"
+#include "ShaderStructs.h"
 
 
-struct Mesh {
+struct Mesh final : ShaderStruct{
+	Mesh(int firstTriangleIndex, int nTriangle, int materialIndex, bool visible, std::string name):
+	firstTriangleIndex(firstTriangleIndex), nTriangle(nTriangle), materialIndex(materialIndex), visible(visible), name(name){};
+
 	int firstTriangleIndex, nTriangle, materialIndex;
 	bool visible;
+	std::string name;
+	[[nodiscard]] std::vector<std::byte> GetBytes() override {
+		return ConvertToBytes(firstTriangleIndex, nTriangle, materialIndex, visible);
+	}
 };
 
-static std::vector<std::pair<std::string, Mesh>> loadMesh(const char* filePath, std::vector<Triangle> *triangles) {
+static std::vector<std::shared_ptr<Mesh>> loadMesh(const char* filePath, std::vector<std::shared_ptr<Triangle>> *triangles) {
 	// Open the OBJ file
 	std::ifstream file(filePath);
 	assert(file.is_open());
@@ -25,14 +32,18 @@ static std::vector<std::pair<std::string, Mesh>> loadMesh(const char* filePath, 
 	std::vector<glm::vec3> normals;
 
 	// Temporary variables to compute bounds
-	std::vector<std::pair<std::string, Mesh>> objects{};
+	std::vector<std::shared_ptr<Mesh>> objects{};
 	// Read each line of the file
 	std::string line;
+
 	while (std::getline(file, line)) {
 		if (line.substr(0, 2) == "o ") {
-			objects.emplace_back(
-				line.substr(2, line.size()),
-				Mesh(static_cast<int>(triangles->size()), 0, 10, true)
+			objects.push_back(
+				std::make_shared<Mesh>(
+					static_cast<int>(triangles->size()),
+					0, 0,
+					true,
+					line.substr(2, line.size()))
 			);
 		}
 		// Parse vertex data
@@ -59,15 +70,15 @@ static std::vector<std::pair<std::string, Mesh>> loadMesh(const char* filePath, 
 				>> idx3 >> slash >> tex3 >> slash >> normal3;
 
 			// Add triangle to mesh, OBJ files are 1-indexed, so decrement indices
-			triangles->emplace_back(
+			triangles->push_back(std::make_shared<Triangle>(
 				vertices[idx1 - 1],
 				vertices[idx2 - 1],
 				vertices[idx3 - 1],
 				normals[normal1 - 1],
 				normals[normal2 - 1],
 				normals[normal3 - 1]
-			);
-			objects[objects.size()-1].second.nTriangle++;
+			));
+			objects[objects.size()-1]->nTriangle++;
 		}
 	}
 	// Close the file

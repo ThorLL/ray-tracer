@@ -33,7 +33,7 @@ struct HitInfo
 
 struct Sphere
 {
-	vec3 center;
+	vec3 center; float center_pad;
 	float radius;
 	int materialIndex;
 };
