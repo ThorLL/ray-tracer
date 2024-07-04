@@ -311,7 +311,7 @@ void loadResources() {
 
 	// Load meshes
 	const char* meshPaths[] = {
-		"resources/models/CornellBox-Original.obj"
+		"resources/models/CornellBox.obj"
 	};
 	for (const auto path: meshPaths)
 		for (const auto& mesh : loadMesh(path, &triangles))
