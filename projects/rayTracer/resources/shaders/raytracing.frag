@@ -220,11 +220,7 @@ vec3 CastRay(Ray ray)
 		bool isSpecularBounce = material.metallic > RandomValue();
 
 		// specular and diffusing directions
-		float phi = 6.28318530718f * RandomValue();
-		vec3 direction = GetImplicitNormal(vec2(cos(phi), sin(phi)) * RandomValue());
-		vec3 bitangent = normalize(cross(normal, normal.z > 0.5f ? vec3(0, 1, 0) : vec3(0, 0, 1)));
-		vec3 tangent = cross(normal, bitangent);
-		vec3 diffuseDir = direction.x * bitangent + direction.y * tangent + direction.z * normal;
+		vec3 diffuseDir= normalize(normal + GetRandomDirection());
 
 		// cast specular light
 		if (isSpecularBounce){

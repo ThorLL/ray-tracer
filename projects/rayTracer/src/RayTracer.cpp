@@ -66,6 +66,8 @@ constexpr unsigned short CAMERA = 32 + TRIANGLES + SPHERES;
 
 std::vector<unsigned short> ChangesBuffer{};
 
+std::vector<float> frameTimes{};
+
 GLFWwindow* window = nullptr;
 
 void FrameBufferResized(GLFWwindow* window, int width, int height)
@@ -202,6 +204,13 @@ void initialise() {
 	ImGui::CreateContext();
 	ImGui::StyleColorsDark();
 
+	ImGuiIO& io = ImGui::GetIO();
+	io.Fonts->AddFontFromFileTTF("resources/myFont.ttf", 18.0f);
+
+	// Init ImGUI
+	ImGui_ImplGlfw_InitForOpenGL(window, true);
+	ImGui_ImplOpenGL3_Init("#version 430 core");
+
 	// gen buffers
 	glGenBuffers(1, &VertexBufferObject);
 	glGenVertexArrays(1, &VertexArrayObject);
@@ -231,16 +240,14 @@ void initialise() {
 	glEnable(GL_DEPTH_TEST);
 	glEnable(GL_CULL_FACE);
 	glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
-	glfwSwapInterval(1);
+	glfwSwapInterval(0);
 
-	// Init ImGUI
-	ImGui_ImplGlfw_InitForOpenGL(window, true);
-	ImGui_ImplOpenGL3_Init("#version 430 core");
+
 
 	// Init camera
 	camera = Camera{
-		lookAt(glm::vec3(0.0f, 1.0f, 2.5f),glm::vec3(0.0f,0.75f,-1.0f),glm::vec3(0.0f, 1.0f, 0.0f)),
-		glm::perspective(1.5f, aspectRatio, 0.1f, 500.0f)
+		lookAt(glm::vec3(0.0f, 1.1f, 2.5f),glm::vec3(0.0f,1.0f,-1.0f),glm::vec3(0.0f, 1.0f, 0.0f)),
+		glm::perspective(1.3f, aspectRatio, 0.1f, 500.0f)
 	};
 }
 
@@ -316,6 +323,13 @@ void loadResources() {
 	for (const auto path: meshPaths)
 		for (const auto& mesh : loadMesh(path, &triangles))
 			meshes.push_back(mesh);
+
+	constexpr int indices[]{5, 4, 0, 3, 2, 4, 1, 7, 8};
+	for (int i = 0; i < meshes.size(); ++i) {
+		meshes[i]->materialIndex = indices[i];
+	}
+
+	spheres.push_back(std::make_shared<Sphere>(glm::vec3(0.5f, 1.0f, -0.2f), 0.4f, 6));
 }
 
 bool MaterialDropDown(int &materialIndex) {
@@ -328,6 +342,33 @@ bool MaterialDropDown(int &materialIndex) {
 	return false;
 }
 
+void ShowMatricies() {
+	ImGui::Begin("Matricies");
+	std::vector sorted(frameTimes);
+	const float currentTime = frameTimes[frameTimes.size()-1];
+	std::ranges::sort(sorted);
+	std::ranges::reverse(sorted);
+
+	auto idx1 = static_cast<size_t>(sorted.size() * 0.01);
+	float ms99 = 0.0f;
+	float ms1 = 0.0f;
+
+	for (int i = 0; i < sorted.size(); i++)
+		if (i < idx1) ms1 += sorted[i];
+		else ms99 += sorted[i];
+	ms99 /= std::max(static_cast<int>(sorted.size() - idx1), 1);
+	ms1 /= std::max(static_cast<int>(idx1), 1);
+	std::ostringstream current, p99, p1;
+	current << "fps: " << static_cast<int>(1.0f / currentTime) << "(" << std::fixed << std::setprecision(2) << currentTime * 1000.0f << "ms)";
+	p99     << "99 : " << static_cast<int>(1.0f / ms99)        << "(" << std::fixed << std::setprecision(2) << ms99 * 1000.0f << "ms)";
+	p1      << "1  : " << static_cast<int>(1.0f / ms1)         << "(" << std::fixed << std::setprecision(2) << ms1 * 1000.0f << "ms)";
+
+	ImGui::Text(current.str().c_str());
+	ImGui::Text(p99.str().c_str());
+	ImGui::Text(p1.str().c_str());
+	ImGui::End();
+}
+
 void RenderGUI() {
 	// Render the debug user interface
 	ImGui_ImplOpenGL3_NewFrame();
@@ -338,6 +379,8 @@ void RenderGUI() {
 	bool materialChanges = false;
 	bool sphereChanges = false;
 	bool meshChanges = false;
+
+	ShowMatricies();
 
 	ImGui::Begin("Ray tracing");
 	systemhanges |= ImGui::DragInt("Rays per Pixel", &numberOfRays, 1, 0);
@@ -444,8 +487,16 @@ int main() {
 			glfwSetWindowShouldClose(window, GL_TRUE);
 			return 0;
 		}
+		const float delta = duration.count() - currentTime;
+		frameTimes.push_back(delta);
 
-		Update(duration.count() - currentTime);
+		// Check if the list size exceeds the limit
+		if (frameTimes.size() > 3000) {
+			// Remove the first element
+			frameTimes.erase(frameTimes.begin());
+		}
+
+		Update(delta);
 		currentTime = duration.count();
 
 		// Render
