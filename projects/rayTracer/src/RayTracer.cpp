@@ -45,17 +45,18 @@ std::vector<std::shared_ptr<Mesh>> meshes{};
 std::vector<std::shared_ptr<Material>> materials{};
 
 // Buffers
-GLuint VertexBufferObject;
 GLuint VertexArrayObject;
 GLuint screenFramebuffer;
 // shader programs
 GLuint shaderProgram;
 GLuint copyShaderProgram;
 
-std::optional<SSBO> SphereSSBO;
-std::optional<SSBO> TriangleSSBO;
-std::optional<SSBO> MeshSSBO;
-std::optional<SSBO> MaterialSSBO;
+std::optional<SSBO<Sphere>> SphereSSBO;
+std::optional<SSBO<Triangle>> TriangleSSBO;
+std::optional<SSBO<Mesh>> MeshSSBO;
+std::optional<SSBO<Material>> MaterialSSBO;
+std::optional<BufferObject<GL_ARRAY_BUFFER, glm::vec3>> fullscreenVBO;
+
 
 constexpr unsigned short SPHERES = 1;
 constexpr unsigned short TRIANGLES = 2;
@@ -140,9 +141,15 @@ void Update(const float deltaTime) {
 		double x, y;
 		glfwGetCursorPos(window, &x, &y);
 
+		double deltaX = x - camera.lastCursorX;
+		double deltaY = y - camera.lastCursorY;
+
+		camera.lastCursorX = x;
+		camera.lastCursorY = y;
+
 		glm::vec2 mousePosition{
-			static_cast<float>(x) / static_cast<float>(screenWidth) * 2.0f - 1.0f,
-			static_cast<float>(y) / static_cast<float>(-screenHeight) * 2.0f + 1.0f
+			static_cast<float>(deltaX) / static_cast<float>(screenWidth) * 2.0f - 1.0f,
+			static_cast<float>(deltaY) / static_cast<float>(-screenHeight) * 2.0f + 1.0f
 		};
 		// Update translation
 		glm::vec2 inputTranslation(0.0f);
@@ -204,22 +211,21 @@ void initialise() {
 	ImGui::CreateContext();
 	ImGui::StyleColorsDark();
 
-	ImGuiIO& io = ImGui::GetIO();
-	io.Fonts->AddFontFromFileTTF("resources/myFont.ttf", 18.0f);
+	ImGui::GetIO().Fonts->AddFontFromFileTTF("resources/myFont.ttf", 18.0f);
 
 	// Init ImGUI
 	ImGui_ImplGlfw_InitForOpenGL(window, true);
 	ImGui_ImplOpenGL3_Init("#version 430 core");
 
 	// gen buffers
-	glGenBuffers(1, &VertexBufferObject);
 	glGenVertexArrays(1, &VertexArrayObject);
+	fullscreenVBO.emplace();
 	SphereSSBO.emplace(1);
 	TriangleSSBO.emplace(2);
 	MeshSSBO.emplace(3);
 	MaterialSSBO.emplace(4);
 
-	glBindBuffer(GL_ARRAY_BUFFER, VertexBufferObject);
+	fullscreenVBO->Bind();
 
 	const std::vector<glm::vec3> fullscreenVertices {
 					{-1.0f, -1.0f, 0.0f},
@@ -227,13 +233,14 @@ void initialise() {
 					{-1.0f, 3.0f, 0.0f}
 	};
 
-	glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec3) * fullscreenVertices.size(), fullscreenVertices.data(), GL_STATIC_DRAW);
+	fullscreenVBO->BufferData(fullscreenVertices, GL_STATIC_DRAW);
 	glBindVertexArray(VertexArrayObject);
 	constexpr GLuint location = 0;
+	auto a = GL_FLOAT;
 	glVertexAttribPointer(location, 3, GL_FLOAT, GL_FALSE, 0, nullptr);
 	glEnableVertexAttribArray(location);
 
-	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	fullscreenVBO->UnBind();
 	glBindVertexArray(0);
 
 	glEnable(GL_FRAMEBUFFER_SRGB);
@@ -241,8 +248,6 @@ void initialise() {
 	glEnable(GL_CULL_FACE);
 	glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
 	glfwSwapInterval(0);
-
-
 
 	// Init camera
 	camera = Camera{
@@ -434,26 +439,23 @@ void HandleChanges() {
 	const unsigned short change = std::accumulate(std::begin(ChangesBuffer), std::end(ChangesBuffer), 0);
 
 	if (change & SPHERES) {
-		std::vector<std::shared_ptr<ShaderStruct>> _spheres;
+		std::transform()
+		std::vector<std::shared_ptr<Sphere>> _spheres;
 		for (const auto &sphere: spheres)
 			_spheres.push_back(std::make_shared<Sphere>(sphere->Transform(camera.viewMatrix)));
-		SphereSSBO->BufferData(_spheres);
+		SphereSSBO->BufferData(_spheres, GL_STATIC_READ);
 	}
 	if (change & TRIANGLES) {
-		std::vector<std::shared_ptr<ShaderStruct>> _triangles;
+		std::vector<std::shared_ptr<Triangle>> _triangles;
 		for (const auto &triangle: triangles)
 			_triangles.push_back(std::make_shared<Triangle>(triangle->Transform(camera.viewMatrix)));
-		TriangleSSBO->BufferData(_triangles);
+		TriangleSSBO->BufferData(_triangles, GL_STATIC_READ);
 	}
 	if (change & MESHES) {
-		std::vector<std::shared_ptr<ShaderStruct>> _meshes;
-		for (const auto &mesh: meshes)_meshes.push_back(mesh);
-		MeshSSBO->BufferData(_meshes);
+		MeshSSBO->BufferData(meshes, GL_STATIC_READ);
 	}
 	if (change & MATERIALS) {
-		std::vector<std::shared_ptr<ShaderStruct>> _materials;
-		for (const auto &material: materials)_materials.push_back(material);
-		MaterialSSBO->BufferData(_materials);
+		MaterialSSBO->BufferData(materials, GL_STATIC_READ);
 	}
 	if (change & SYSTEM) {
 		glUniform1iv(raysLocation, 1, &numberOfRays);

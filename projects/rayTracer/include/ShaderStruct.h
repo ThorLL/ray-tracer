@@ -2,10 +2,13 @@
 #include <vector>
 
 struct ShaderStruct {
-public:
 	virtual ~ShaderStruct() = default;
 	[[nodiscard]] virtual std::vector<std::byte> GetBytes() = 0;
 
+	template <typename T, typename = std::enable_if_t<std::is_base_of_v<ShaderStruct, T> && !std::is_same_v<ShaderStruct, T>>>
+	static size_t GetSize(T s) {
+		return s.GetSize();
+	}
 private:
 	static size_t AddSize() {return 0;}
 
@@ -27,10 +30,13 @@ private:
 protected:
 	template<typename T, typename... Args>
 	std::vector<std::byte> ConvertToBytes(T first, Args... args) {
-		size_t size = AddSize(first, args...);
-		size_t padding = (16 - size % 16) * (size % 16 > 0);
-		std::vector<std::byte> bytes(size + padding);
+		std::vector<std::byte> bytes(GetSize(first, args...));
 		AddBytes(bytes.data(), first, args...);
 		return bytes;
+	}
+	template<typename T, typename... Args>
+	size_t GetSize(T first, Args... args) {
+		const size_t size = AddSize(first, args...);
+		return size +  (16 - size % 16) * (size % 16 > 0);
 	}
 };

@@ -1,21 +1,30 @@
 #pragma once
 #include <vector>
 
+#include "BufferObject.h"
 #include "glad/glad.h"
 
-
-class SSBO {
+template <typename T, typename = std::enable_if_t<std::is_base_of_v<ShaderStruct, T> && !std::is_same_v<ShaderStruct, T>>>
+class SSBO final : public BufferObject<GL_SHADER_STORAGE_BUFFER, std::byte>{
 public:
-	explicit SSBO(int index) : index(index) {
-		glGenBuffers(1, &handle);
+	explicit SSBO(const int index) : index(index) {}
+	~SSBO() override = default;
+
+	void BufferData(const std::vector<std::shared_ptr<T>>& data, GLuint usage) const override {
+		BufferObject::BufferData(ShaderStructToBytes(data), usage);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, index, this->handle);
 	}
 
-	~SSBO() {
-		glDeleteBuffers(1, &handle);
-	}
+	void BufferData(GLsizeiptr size, GLuint usage) const override {
+		BufferObject::BufferData(ShaderStruct::GetSize<T>(), usage);
+	};
+	void UpdateData(const std::vector<T>& data, size_t offset) const override {
+		BufferObject::UpdateData(ShaderStructToBytes(data), offset);
+	};
+private:
+	int index;
 
-	void BufferData(const std::vector<std::shared_ptr<ShaderStruct>>& data) const {
-		if (data.empty()) return;
+	std::vector<std::byte> ShaderStructToBytes(const std::vector<std::shared_ptr<T>>& data) {
 		std::vector<std::vector<std::byte>> bytes;
 		size_t totalSize = 0;
 		for (const auto &s : data) {
@@ -29,14 +38,7 @@ public:
 			std::memcpy(ptr, structBytes.data(), structBytes.size());
 			ptr += structBytes.size();
 		}
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, handle);
-		glBufferData(GL_SHADER_STORAGE_BUFFER, static_cast<GLsizeiptr>(_data.size()), _data.data(), GL_STATIC_READ);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, index, handle);
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+		return _data;
 	}
-
-private:
-	GLuint handle = -1;
-	int index;
 };
 

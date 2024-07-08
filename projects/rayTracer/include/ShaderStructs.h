@@ -1,37 +1,33 @@
 #pragma once
 #include <glm/ext/matrix_float4x4.hpp>
+#include <utility>
 
-#include "Camera.h"
 
-static void transformVec3(const glm::mat4 &matrix, glm::vec3 &vector) {
-	const auto _vector = matrix * glm::vec4(vector, 1.0f);
-	vector = glm::vec3(_vector / _vector.w);
-}
+#include "GeometryObject.h"
 
-struct Sphere : ShaderStruct
+struct Sphere final : ShaderStruct, Geometry::GeometryObject
 {
 	Sphere(const glm::vec3 &center, float radius, int material_index)
 		: center(center),
 		  radius(radius),
-		  materialIndex(material_index) {
+		  materialIndex(material_index){
 	}
 
 	glm::vec3 center;
 	float radius;
 	int materialIndex;
 
-	[[nodiscard]] Sphere Transform(const glm::mat4 &matrix) const {
-		Sphere sphere = *this;
-		transformVec3(matrix, sphere.center);
-		return sphere;
-	}
 
 	[[nodiscard]] std::vector<std::byte> GetBytes() override {
 		return ConvertToBytes(center, radius, materialIndex);
 	}
+
+	void Transform(const glm::mat4 &matrix) override {
+		Geometry::Transform(matrix, center);
+	}
 };
 
-struct Triangle final : ShaderStruct
+struct Triangle final : ShaderStruct, Geometry::GeometryObject
 {
 	Triangle(const glm::vec3 &pos_a, const glm::vec3 &pos_b, const glm::vec3 &pos_c, const glm::vec3 &normal_a,
 		const glm::vec3 &normal_b, const glm::vec3 &normal_c)
@@ -46,12 +42,8 @@ struct Triangle final : ShaderStruct
 	glm::vec3 posA, posB, posC;
 	glm::vec3 normalA, normalB, normalC;
 
-	[[nodiscard]] Triangle Transform(const glm::mat4 &matrix) const {
-		Triangle triangle = *this;
-		transformVec3(matrix, triangle.posA);
-		transformVec3(matrix, triangle.posB);
-		transformVec3(matrix, triangle.posC);
-		return triangle;
+	void Transform(const glm::mat4 &matrix) override {
+		Geometry::Transform(matrix, posA, posB, posC);
 	}
 
 	[[nodiscard]] std::vector<std::byte> GetBytes() override {
@@ -69,7 +61,7 @@ struct Material final : ShaderStruct
 		  roughness(roughness),
 		  metallic(metallic),
 		  ior(ior),
-	      name(name),
+	      name(std::move(name)),
 		  index(index)
 	{
 	}

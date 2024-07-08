@@ -24,6 +24,9 @@ public:
 	glm::mat4 viewMatrix, projMatrix;
 	Transform transform;
 
+	double lastCursorX = 0.0;
+	double lastCursorY = 0.0;
+
 	glm::vec3 postion() {
 		return glm::vec3(inverse(viewMatrix)[3]);
 	};
